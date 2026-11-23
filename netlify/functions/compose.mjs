@@ -1,7 +1,7 @@
 import sharp from 'sharp';
 
 // 立ち絵と背景を置いている元のサイトURL（末尾のスラッシュなし）
-const ASSET_SITE_URL = 'https://lucky-seahorse-c5ad97.netlify.app';
+const ASSET_SITE_URL = 'https://jazzy-sprinkles-3c72d5.netlify.app';
 
 // ★背景を薄くする強さ（0.0 = そのまま / 0.4 = 40%薄く / 0.7 = かなり薄く）
 const BG_FADE_ALPHA = 0.4;
