@@ -1,7 +1,10 @@
 import sharp from 'sharp';
 
 // 立ち絵と背景を置いている元のサイトURL（末尾のスラッシュなし）
-const ASSET_SITE_URL = 'https://jazzy-sprinkles-3c72d5.netlify.app';
+const ASSET_SITE_URL = 'https://lucky-seahorse-c5ad97.netlify.app';
+
+// ★背景を薄くする強さ（0.0 = そのまま / 0.4 = 40%薄く / 0.7 = かなり薄く）
+const BG_FADE_ALPHA = 0.4;
 
 // URLの文字化け・二重エンコードを防ぐ関数
 function safeDecode(str) {
@@ -61,7 +64,7 @@ export default async (req, context) => {
       fetchCharacter(char, costume, expr),
     ]);
 
-    // 2. 背景が横1280pxより大きければリサイズ（表示を速くし、エラーを防ぐ）
+    // 2. 背景が横1280pxより大きければリサイズ（1024×1024ならそのまま）
     const bgBuffer = await sharp(bgBufferRaw)
       .resize({
         width: 1280,
@@ -70,31 +73,55 @@ export default async (req, context) => {
       .toBuffer();
 
     const bgMeta = await sharp(bgBuffer).metadata();
-    const bgWidth = bgMeta.width || 1280;
-    const bgHeight = bgMeta.height || 720;
+    const bgWidth = bgMeta.width || 1024;
+    const bgHeight = bgMeta.height || 1024;
 
-    // 3. 立ち絵を背景の高さ95%（横幅は背景以内）に収まるよう自動調整
+    // 3. 立ち絵を背景のサイズ(100%)にピッタリ合わせる（1024×1024同士ならズレゼロ）
     const charResizedBuffer = await sharp(charBufferRaw)
       .resize({
         width: bgWidth,
-        height: Math.floor(bgHeight * 0.95), // ★キャラを少し小さくしたい時は 0.85 などに変更
+        height: bgHeight,
         fit: 'inside',
         withoutEnlargement: false,
       })
       .toBuffer();
 
-    // 4. 背景に立ち絵を合成（下部・中央に配置）
-    const finalBuffer = await sharp(bgBuffer)
-      .composite([
-        {
-          input: charResizedBuffer,
-          gravity: 'south',
+    // 4. 重ねる画像のリストを作成
+    const compositeLayers = [];
+
+    // 背景を薄くする白い半透明フィルター
+    if (BG_FADE_ALPHA > 0) {
+      const bgOverlayBuffer = await sharp({
+        create: {
+          width: bgWidth,
+          height: bgHeight,
+          channels: 4,
+          // ※白っぽく薄くする場合は 255, 255, 255。もし暗く落ち着かせたい時は 0, 0, 0 に変更
+          background: { r: 255, g: 255, b: 255, alpha: BG_FADE_ALPHA },
         },
-      ])
+      })
+        .png()
+        .toBuffer();
+
+      compositeLayers.push({
+        input: bgOverlayBuffer,
+        top: 0,
+        left: 0,
+      });
+    }
+
+    // 立ち絵を一番上に重ねる
+    compositeLayers.push({
+      input: charResizedBuffer,
+      gravity: 'south',
+    });
+
+    // 5. 合成してWebPで返す
+    const finalBuffer = await sharp(bgBuffer)
+      .composite(compositeLayers)
       .webp({ quality: 85 })
       .toBuffer();
 
-    // 5. 合成した画像を返す（NetlifyのCDNに7日間記憶させ、2回目以降は再生成しない）
     return new Response(new Uint8Array(finalBuffer), {
       status: 200,
       headers: {
